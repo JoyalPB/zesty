@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/menu_item.dart';
-import 'dietary_symbol.dart'; // <-- Import our new custom widget
+import 'dietary_symbol.dart';
 import 'item_details_popup.dart';
 
 class MenuItemCard extends StatelessWidget {
@@ -32,7 +32,6 @@ class MenuItemCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 0),
               child: Row(
                 children: [
-                  // --- THIS LINE NOW USES THE CORRECT WIDGET ---
                   DietarySymbol(dietary: item.dietary, size: 18),
                   const SizedBox(width: 6),
                   Expanded(
@@ -41,8 +40,29 @@ class MenuItemCard extends StatelessWidget {
                 ],
               ),
             ),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 8.0), child: Text('₹${item.price.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold))),
-            const SizedBox(height: 8),
+
+            // --- THIS IS THE NEW, UPGRADED SECTION ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // The Price
+                  Text('₹${item.price.toStringAsFixed(2)}', style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold)),
+
+                  // The "Low Stock" Chip - only appears if the condition is met
+                  if (item.status == 'low-stock' && item.isAvailable)
+                    Chip(
+                      label: Text('Low Stock', style: TextStyle(fontSize: 10, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                      backgroundColor: Colors.orange.shade100,
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                      visualDensity: VisualDensity.compact, // Makes the chip smaller
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4), // Adjusted bottom padding
           ],
         ),
       ),

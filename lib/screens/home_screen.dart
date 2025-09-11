@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import 'home_content.dart';
-import 'cart_screen.dart'; // <-- Now it knows this is the ONLY CartScreen
+import 'cart_screen.dart'; // <-- This import was likely missing or incorrect
 import 'placeholder_screens.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  // This can now be 'const' again because there is no confusion
+  // This list now correctly finds all its "employees"
   static const List<Widget> _pages = <Widget>[
     HomeContent(),
     CartScreen(),

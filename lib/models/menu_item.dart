@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import this for the Timestamp type
+
 class MenuItem {
   final String id;
   final String name;
@@ -8,7 +10,8 @@ class MenuItem {
   final bool isAvailable;
   final int stock;
   final String status;
-  final String dietary; // <-- ADD THIS NEW PROPERTY
+  final String dietary;
+  final Timestamp createdAt; // <-- ADD THIS NEW PROPERTY
 
   MenuItem({
     required this.id,
@@ -20,6 +23,7 @@ class MenuItem {
     required this.isAvailable,
     required this.stock,
     required this.status,
-    required this.dietary, // <-- ADD THIS TO THE CONSTRUCTOR
+    required this.dietary,
+    required this.createdAt, // <-- ADD THIS TO THE CONSTRUCTOR
   });
 }

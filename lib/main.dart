@@ -3,9 +3,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'providers/cart_provider.dart';
-import 'providers/connectivity_provider.dart'; // <-- Import the new provider
+import 'providers/connectivity_provider.dart';
 import 'screens/home_screen.dart';
-import 'screens/no_internet_screen.dart'; // <-- Import the new screen
+import 'screens/no_internet_screen.dart';
+import 'theme/app_colors.dart';
+// Note: The import for splash_screen.dart is no longer needed.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,7 +15,6 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   runApp(
-    // MultiProvider allows us to provide multiple "brains" to our app.
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => CartProvider()),
@@ -29,34 +30,65 @@ class SmartCanteenApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Canteen',
-      theme: ThemeData(primarySwatch: Colors.teal),
-      // The home is now a "ConnectivityWrapper" that decides which screen to show.
-      home: const ConnectivityWrapper(),
+      title: 'Zesty Smart Canteen',
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: AppColors.primaryOrange,
+        primaryColor: AppColors.primaryOrange,
+        scaffoldBackgroundColor: AppColors.lightGrey,
+        colorScheme: ColorScheme.fromSwatch(
+          primarySwatch: AppColors.primaryOrange,
+          accentColor: AppColors.primaryPurple,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.black,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryOrange,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.primaryOrange,
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: Colors.grey[200],
+          selectedColor: AppColors.primaryOrange,
+          labelStyle: const TextStyle(color: Colors.black),
+          secondaryLabelStyle: const TextStyle(color: Colors.white),
+        ),
+      ),
+      // --- THIS IS THE ONLY CHANGE ---
+      // We start directly with the ConnectivityWrapper now.
+      home: const ConnectivityWrapper(),
     );
   }
 }
 
-// This is our new "Gatekeeper" widget.
+// The "Gatekeeper" widget that decides which screen to show FIRST.
 class ConnectivityWrapper extends StatelessWidget {
   const ConnectivityWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // It watches for changes in the connectivity status.
     final connectivity = context.watch<ConnectivityProvider>();
 
-    // If connected, show the main HomeScreen.
     if (connectivity.isConnected) {
+      // If there's internet, show the main HomeScreen.
       return const HomeScreen();
-    }
-    // If not connected, show the NoInternetScreen.
-    else {
+    } else {
+      // If not, show the NoInternetScreen.
       return NoInternetScreen(
-        // Pass the checkConnectivity function to the "Retry" button.
-        onRetry: () => connectivity.checkConnectivity(),
+        onRetry: () => Provider.of<ConnectivityProvider>(context, listen: false).checkConnectivity(),
       );
     }
   }
 }
+

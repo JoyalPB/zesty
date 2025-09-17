@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
-import 'dart:math'; // For rotation
+import 'dart:math';
 import '../models/menu_item.dart';
 import 'dietary_symbol.dart';
 import 'item_details_popup.dart';
 
 class MenuItemCard extends StatelessWidget {
   final MenuItem item;
-  const MenuItemCard({super.key, required this.item});
+  final List<MenuItem> allItems;
 
-  // Helper for the DIAGONAL "Unavailable" banner
+  const MenuItemCard({
+    super.key,
+    required this.item,
+    required this.allItems,
+  });
+
   Widget _buildCornerBanner({required String text, required Color color}) {
     return Positioned(
       top: 25,
@@ -24,21 +29,15 @@ class MenuItemCard extends StatelessWidget {
     );
   }
 
-  // --- NEW: Helper for the HORIZONTAL "Out of Stock" banner ---
   Widget _buildBottomBanner({required String text, required Color color}) {
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: Container(
-        // The new semi-transparent background
         color: color.withOpacity(0.8),
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-          textAlign: TextAlign.center,
-        ),
+        child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), textAlign: TextAlign.center),
       ),
     );
   }
@@ -46,7 +45,16 @@ class MenuItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: item.isAvailable ? () { showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => ItemDetailsPopup(item: item)); } : null,
+      onTap: item.isAvailable
+          ? () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => ItemDetailsPopup(item: item, allItems: allItems),
+        );
+      }
+          : null,
       borderRadius: BorderRadius.circular(15),
       child: Card(
         elevation: 4,
@@ -65,11 +73,6 @@ class MenuItemCard extends StatelessWidget {
                       errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.fastfood, color: Colors.grey, size: 50)),
                     ),
                   ),
-
-                  // --- UPDATED LOGIC TO SHOW THE CORRECT BANNER ---
-
-                  // Case 1: The item is completely unavailable.
-                  // Show a grey overlay AND the DIAGONAL "Unavailable" banner.
                   if (!item.isAvailable)
                     Stack(
                       children: [
@@ -79,9 +82,6 @@ class MenuItemCard extends StatelessWidget {
                         _buildCornerBanner(text: 'Unavailable', color: Colors.black),
                       ],
                     ),
-
-                  // Case 2: The item is available but has zero stock.
-                  // Show ONLY the new HORIZONTAL "Out of Stock" banner.
                   if (item.isAvailable && item.stock == 0)
                     _buildBottomBanner(text: 'Out of Stock', color: Colors.red),
                 ],
@@ -123,3 +123,4 @@ class MenuItemCard extends StatelessWidget {
     );
   }
 }
+

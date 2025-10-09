@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:zesty_app/screens/placeholder_screens.dart';
 
-import '../screens/payment_screen.dart'; // Import the PaymentScreen
-import '../screens/placeholder_screens.dart';
+// Import your new order confirmation screen
+import '../screens/payment_screen.dart';
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
-import '../providers/order_provider.dart';
+
+// Firestore and OrdersProvider are no longer needed here
+// import 'package:cloud_firestore/cloud_firestore.dart';
+// import '../providers/order_provider.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
-  // This function shows a confirmation dialog before clearing the cart.
   void _showClearCartConfirmationDialog(BuildContext context) {
+    // ... This function remains the same
     final cart = Provider.of<CartProvider>(context, listen: false);
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Clear Cart?'),
-        content:
-        const Text('Are you sure you want to remove all items from your cart?'),
+        content: const Text('Are you sure you want to remove all items from your cart?'),
         actions: <Widget>[
           TextButton(
             child: const Text('No'),
@@ -40,63 +41,33 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  // This function handles all logic after a successful payment, including saving to Firestore.
-  Future<void> _handleSuccessfulOrder(BuildContext context) async {
+  // --- THIS FUNCTION IS NOW MUCH SIMPLER ---
+  // It no longer saves to the database or clears the cart.
+  // Its only job is to navigate to the confirmation screen.
+  void _handleSuccessfulOrder(BuildContext context) {
     final cart = Provider.of<CartProvider>(context, listen: false);
-    final orders = Provider.of<OrdersProvider>(context, listen: false);
     final List<CartItem> orderedItems = cart.items.values.toList();
     final double total = cart.totalAmount;
 
-    try {
-      // Get a reference to the Firestore collection
-      final ordersCollection = FirebaseFirestore.instance.collection('orders');
-
-      // Add a new document with the order data
-      await ordersCollection.add({
-        'totalAmount': total,
-        'orderedAt': Timestamp.now(), // Use a server timestamp
-        // Convert the list of CartItem objects into a list of Maps
-        'items': orderedItems.map((item) => item.toJson()).toList(),
-        // TODO: In a real app, you would add a userId here
-        // 'userId': 'your_current_user_id',
-      });
-
-      // If the database write is successful, proceed with the local logic
-      if (!Navigator.of(context).mounted) return;
-
-      orders.addOrder(orderedItems, total);
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (ctx) => PlaceholderScreen(
-            orderedItems: orderedItems,
-            totalAmount: total,
-          ),
+    // The new logic: Simply navigate and pass the cart data.
+    // The OrderConfirmationScreen will handle the rest.
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => OrderConfirmationScreen(
+          orderedItems: orderedItems,
+          totalAmount: total,
         ),
-      );
-      cart.clearCart();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Order placed and saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (error) {
-      // If there's an error, show a message to the user
-      if (!Navigator.of(context).mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save order. Please try again. Error: $error'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+      ),
+    );
   }
+  // --- END OF SIMPLIFIED FUNCTION ---
 
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
     return Scaffold(
       appBar: AppBar(
+        // ... AppBar code remains the same
         title: const Text('Your Cart'),
         actions: [
           IconButton(
@@ -133,7 +104,9 @@ class CartScreen extends StatelessWidget {
                     onPressed: (cart.totalAmount <= 0)
                         ? null
                         : () {
-                      // Navigate to the PaymentScreen on press
+                      // This part remains the same. It correctly navigates
+                      // to the payment screen, which then calls our new,
+                      // simplified _handleSuccessfulOrder function.
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -154,6 +127,7 @@ class CartScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: ListView.builder(
+              // ... The rest of the ListView.builder remains the same
               itemCount: cart.items.length,
               itemBuilder: (ctx, i) {
                 final item = cart.items.values.toList()[i];

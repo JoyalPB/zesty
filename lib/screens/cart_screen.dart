@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:zesty_app/screens/placeholder_screens.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 
+import '../screens/payment_screen.dart'; // Import the PaymentScreen
+import '../screens/placeholder_screens.dart';
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 import '../providers/order_provider.dart';
@@ -9,32 +11,28 @@ import '../providers/order_provider.dart';
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
-  // This function shows our fake payment dialog
-  void _showFakePaymentDialog(BuildContext context) {
+  // This function shows a confirmation dialog before clearing the cart.
+  void _showClearCartConfirmationDialog(BuildContext context) {
     final cart = Provider.of<CartProvider>(context, listen: false);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Order'),
-        content: Text('Pay a total of ₹${cart.totalAmount.toStringAsFixed(2)}?'),
+        title: const Text('Clear Cart?'),
+        content:
+        const Text('Are you sure you want to remove all items from your cart?'),
         actions: <Widget>[
-          // The "Cancel" button simulates a failed or cancelled payment
           TextButton(
-            child: const Text('Cancel'),
+            child: const Text('No'),
             onPressed: () {
-              Navigator.of(ctx).pop(); // Just close the dialog
+              Navigator.of(ctx).pop();
             },
           ),
-          // The "Pay Now" button simulates a successful payment
-          ElevatedButton(
-            child: const Text('Pay Now'),
+          TextButton(
+            child: const Text('Yes'),
             onPressed: () {
-              // 1. Close the dialog first
               Navigator.of(ctx).pop();
-
-              // 2. Run all the logic for a successful order
-              _handleSuccessfulOrder(context);
+              cart.clearCart();
             },
           )
         ],
@@ -42,40 +40,56 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  // This function contains the logic to run after a "successful" payment
-
-  void _handleSuccessfulOrder(BuildContext context) {
+  // This function handles all logic after a successful payment, including saving to Firestore.
+  Future<void> _handleSuccessfulOrder(BuildContext context) async {
     final cart = Provider.of<CartProvider>(context, listen: false);
     final orders = Provider.of<OrdersProvider>(context, listen: false);
-
-    // --- THE FIX IS HERE ---
-    // 1. Store cart data in local variables BEFORE clearing.
     final List<CartItem> orderedItems = cart.items.values.toList();
     final double total = cart.totalAmount;
 
-    // 2. Add the order to your order history using the local variables.
-    orders.addOrder(orderedItems, total);
+    try {
+      // Get a reference to the Firestore collection
+      final ordersCollection = FirebaseFirestore.instance.collection('orders');
 
-    // 3. Navigate to the confirmation screen using the local variables.
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (ctx) => PlaceholderScreen(
-          orderedItems: orderedItems, // Pass the saved list
-          totalAmount: total,        // Pass the saved total
+      // Add a new document with the order data
+      await ordersCollection.add({
+        'totalAmount': total,
+        'orderedAt': Timestamp.now(), // Use a server timestamp
+        // Convert the list of CartItem objects into a list of Maps
+        'items': orderedItems.map((item) => item.toJson()).toList(),
+        // TODO: In a real app, you would add a userId here
+        // 'userId': 'your_current_user_id',
+      });
+
+      // If the database write is successful, proceed with the local logic
+      if (!Navigator.of(context).mounted) return;
+
+      orders.addOrder(orderedItems, total);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (ctx) => PlaceholderScreen(
+            orderedItems: orderedItems,
+            totalAmount: total,
+          ),
         ),
-      ),
-    );
-
-    // 4. NOW it's safe to clear the cart.
-    cart.clearCart();
-
-    // 5. Show a success message.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Order placed successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      );
+      cart.clearCart();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Order placed and saved successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      // If there's an error, show a message to the user
+      if (!Navigator.of(context).mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save order. Please try again. Error: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -84,6 +98,15 @@ class CartScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Your Cart'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Clear Cart',
+            onPressed: cart.itemCount == 0
+                ? null
+                : () => _showClearCartConfirmationDialog(context),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -100,16 +123,28 @@ class CartScreen extends StatelessWidget {
                     label: Text(
                       '₹${cart.totalAmount.toStringAsFixed(2)}',
                       style: TextStyle(
-                        color: Theme.of(context).primaryTextTheme.titleLarge?.color,
+                        color:
+                        Theme.of(context).primaryTextTheme.titleLarge?.color,
                       ),
                     ),
                     backgroundColor: Theme.of(context).primaryColor,
                   ),
                   TextButton(
-                    // When pressed, call our new dialog function
                     onPressed: (cart.totalAmount <= 0)
                         ? null
-                        : () => _showFakePaymentDialog(context),
+                        : () {
+                      // Navigate to the PaymentScreen on press
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => PaymentScreen(
+                            totalAmount: cart.totalAmount,
+                            onSuccessfulPayment: () =>
+                                _handleSuccessfulOrder(context),
+                          ),
+                        ),
+                      );
+                    },
                     child: const Text('ORDER NOW'),
                   ),
                 ],
@@ -123,22 +158,25 @@ class CartScreen extends StatelessWidget {
               itemBuilder: (ctx, i) {
                 final item = cart.items.values.toList()[i];
                 final productId = cart.items.keys.toList()[i];
-                // ... (The rest of your ListView.builder is the same)
                 return Dismissible(
                   key: ValueKey(item.id),
                   background: Container(
                     color: Theme.of(context).colorScheme.error,
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
-                    margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-                    child: const Icon(Icons.delete, color: Colors.white, size: 40),
+                    margin:
+                    const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
+                    child:
+                    const Icon(Icons.delete, color: Colors.white, size: 40),
                   ),
                   direction: DismissDirection.endToStart,
                   onDismissed: (direction) {
-                    Provider.of<CartProvider>(context, listen: false).removeItem(productId);
+                    Provider.of<CartProvider>(context, listen: false)
+                        .removeItem(productId);
                   },
                   child: Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
+                    margin:
+                    const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: ListTile(
@@ -149,8 +187,28 @@ class CartScreen extends StatelessWidget {
                           ),
                         ),
                         title: Text(item.name),
-                        subtitle: Text('Total: ₹${(item.price * item.quantity).toStringAsFixed(2)}'),
-                        trailing: Text('${item.quantity} x'),
+                        subtitle: Text(
+                            'Total: ₹${(item.price * item.quantity).toStringAsFixed(2)}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove),
+                              onPressed: item.quantity > 1
+                                  ? () {
+                                cart.removeSingleItem(productId);
+                              }
+                                  : null,
+                            ),
+                            Text('${item.quantity}'),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () {
+                                cart.addSingleItem(productId);
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

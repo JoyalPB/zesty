@@ -14,14 +14,62 @@ class ItemDetailsPopup extends StatefulWidget {
 
 class _ItemDetailsPopupState extends State<ItemDetailsPopup> {
   int _quantity = 1;
+  // Add a loading state variable
+  bool _isLoading = false;
+
+  // --- THIS IS THE CORRECTED FUNCTION ---
+  // It's now async to handle the Future from the provider
+  Future<void> _addItemToCart() async {
+    // Prevent multiple clicks while processing
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final cart = Provider.of<CartProvider>(context, listen: false);
+
+    // 1. Await the result from the provider
+    bool success = await cart.addItem(widget.item, quantity: _quantity);
+
+    // This check ensures the widget is still in the tree before updating state
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    // 2. Handle the success or failure case
+    if (success) {
+      // Only close the popup if the item was added successfully
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Item added to cart!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
+    } else {
+      // If it failed (out of stock), show an error and keep the popup open
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sorry, not enough items in stock!'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // ... (Your existing build method logic for isAvailable, etc., is fine)
     final bool isAvailable = widget.item.isAvailable;
     final bool isStockLimitReached = _quantity >= widget.item.stock;
     final totalButtonPrice = widget.item.price * _quantity;
 
     return Container(
+      // ... (The top part of your widget remains the same)
       height: MediaQuery.of(context).size.height * 0.55,
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -38,29 +86,26 @@ class _ItemDetailsPopupState extends State<ItemDetailsPopup> {
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                // --- THIS IS THE FIXED LINE ---
-                // We now use the official theme color instead of hard-coding 'Colors.teal'
                 backgroundColor: (isAvailable && widget.item.stock > 0) ? Theme.of(context).primaryColor : Colors.grey,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 minimumSize: const Size(double.infinity, 54),
               ),
-              onPressed: (isAvailable && widget.item.stock > 0) ? () {
-                final cart = Provider.of<CartProvider>(context, listen: false);
-                cart.addItems(widget.item, _quantity);
-                Navigator.of(context).pop();
-              } : null,
-              child: Row(
+              // Call the new async function here
+              onPressed: (isAvailable && widget.item.stock > 0) ? _addItemToCart : null,
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white) // Show loading indicator
+                  : Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      _buildQuantityButton(icon: Icons.remove, onPressed: isAvailable && _quantity > 1 ? () => setState(() => _quantity--) : null),
+                      _buildQuantityButton(icon: Icons.remove, onPressed: !_isLoading && isAvailable && _quantity > 1 ? () => setState(() => _quantity--) : null),
                       const SizedBox(width: 12),
                       Text('$_quantity', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                       const SizedBox(width: 12),
-                      _buildQuantityButton(icon: Icons.add, onPressed: isAvailable && !isStockLimitReached ? () => setState(() => _quantity++) : null),
+                      _buildQuantityButton(icon: Icons.add, onPressed: !_isLoading && isAvailable && !isStockLimitReached ? () => setState(() => _quantity++) : null),
                     ],
                   ),
                   Text(

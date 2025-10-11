@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:zesty_app/screens/signup_page.dart';
-import 'edit_profile.dart'; // Make sure this path is correct
+import 'edit_profile.dart';
+import 'order_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,7 +15,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // State variables to hold user data and loading status
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
   String? _errorMessage;
@@ -22,13 +22,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Fetch user data when the screen is first loaded
     _fetchUserData();
   }
 
-  /// Fetches the current user's data from Firestore.
   Future<void> _fetchUserData() async {
-    // Reset state before fetching
+    // ... (Your existing _fetchUserData code remains unchanged)
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -39,25 +37,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user == null) {
         throw Exception("User not logged in.");
       }
-
-      // Get the user document from the 'users' collection using their UID
       final docSnapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
-
       if (docSnapshot.exists) {
-        // If the document exists, store its data in our state variable
         setState(() {
           _userData = docSnapshot.data();
           _isLoading = false;
         });
       } else {
-        // Handle case where user is authenticated but has no profile document
         throw Exception("Profile data not found. Please complete setup.");
       }
     } catch (e) {
-      // Handle any errors during the fetch process
       setState(() {
         _errorMessage = "Failed to load profile: ${e.toString()}";
         _isLoading = false;
@@ -65,20 +57,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// Signs the user out and navigates to the signup screen.
   Future<void> _logout() async {
+    // ... (Your existing _logout code remains unchanged)
     try {
       await FirebaseAuth.instance.signOut();
-
-      // Ensure the widget is still mounted before navigating
       if (!mounted) return;
-
-      // Navigate to the signup page and remove all previous routes
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const SignupPage()),
             (Route<dynamic> route) => false,
       );
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.green,
@@ -96,11 +83,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// Navigates to the Edit Profile screen and refreshes data on return.
   void _navigateToEditProfile() async {
+    // ... (Your existing _navigateToEditProfile code remains unchanged)
     if (_userData == null) return;
-
-    // Navigate and wait for a result.
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -110,13 +95,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
-
-    // If the edit screen returns 'true', it means the profile was updated.
-    // So, we refresh the data on this screen.
     if (result == true) {
       _fetchUserData();
     }
   }
+
+  // --- ADD THIS NEW NAVIGATION METHOD ---
+  /// Navigates to the Order History screen.
+  void _navigateToOrderHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
+    );
+  }
+  // ------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      // Display a loading indicator, an error, or the profile content
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
@@ -143,9 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Builds the main profile content once data is loaded.
   Widget _buildProfileContent() {
-    // Safely access data with fallback values
     final String fullName = _userData?['fullName'] ?? 'No Name Found';
     final String email = _userData?['email'] ?? 'No Email Found';
     final String username = _userData?['username'] ?? 'No Username';
@@ -153,14 +142,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch, // Stretch button to full width
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ... (Your existing Row with CircleAvatar and user details)
           Row(
             children: [
               CircleAvatar(
                 radius: 40,
                 backgroundColor: Colors.teal.shade100,
-                // Display the first letter of the user's name
                 child: Text(
                   fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
                   style: const TextStyle(fontSize: 40, color: Colors.teal),
@@ -187,7 +176,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(),
           const SizedBox(height: 10),
 
-          // Profile Details
           ListTile(
             leading: const Icon(Icons.email_outlined, color: Colors.teal),
             title: const Text('Email'),
@@ -202,9 +190,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
 
-          const Spacer(), // Pushes the logout button to the bottom
+          // --- ADD THIS NEW LISTTILE FOR ORDER HISTORY ---
+          ListTile(
+            leading: const Icon(Icons.history, color: Colors.teal),
+            title: const Text('Order History'),
+            onTap: _navigateToOrderHistory,
+            trailing: const Icon(Icons.chevron_right),
+          ),
+          // ---------------------------------------------
 
-          // Logout Button
+          const Spacer(),
+
           ElevatedButton.icon(
             icon: const Icon(Icons.logout),
             label: const Text('Logout'),

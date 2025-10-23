@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import 'home_content.dart';
 import 'cart_screen.dart'; // <-- This import was likely missing or incorrect
+import 'order_screen.dart';
 import 'placeholder_screens.dart';
+import 'profile.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

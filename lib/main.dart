@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <-- Add Firebase Auth import
 import 'package:provider/provider.dart';
+import 'package:zesty_app/providers/order_provider.dart';
+
 import 'firebase_options.dart';
-import 'providers/cart_provider.dart';
+import 'providers/cart_provider.dart';// <-- Add OrdersProvider import
 import 'providers/connectivity_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/no_internet_screen.dart';
+import 'screens/signup_page.dart';
 import 'theme/app_colors.dart';
-// Note: The import for splash_screen.dart is no longer needed.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => CartProvider()),
+        ChangeNotifierProvider(create: (context) => OrdersProvider()), // <-- Restored OrdersProvider
         ChangeNotifierProvider(create: (context) => ConnectivityProvider()),
       ],
       child: const SmartCanteenApp(),
@@ -27,6 +32,7 @@ void main() async {
 
 class SmartCanteenApp extends StatelessWidget {
   const SmartCanteenApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -65,14 +71,47 @@ class SmartCanteenApp extends StatelessWidget {
           secondaryLabelStyle: const TextStyle(color: Colors.white),
         ),
       ),
-      // --- THIS IS THE ONLY CHANGE ---
-      // We start directly with the ConnectivityWrapper now.
-      home: const ConnectivityWrapper(),
+      // The AuthWrapper now decides which screen to show first.
+      home: const AuthWrapper(),
     );
   }
 }
 
-// The "Gatekeeper" widget that decides which screen to show FIRST.
+//--- NEW WIDGET ---
+/// Listens to Firebase Auth state and directs the user accordingly.
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      // Listen to the user's login state
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // Show a loading indicator while checking
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        // If the user is logged in (snapshot has data)
+        if (snapshot.hasData) {
+          // Go to the main app content, which handles connectivity
+          return const ConnectivityWrapper();
+        }
+
+        // If the user is not logged in
+        return const SignupPage();
+      },
+    );
+  }
+}
+
+
+// This "Gatekeeper" widget for internet remains the same.
 class ConnectivityWrapper extends StatelessWidget {
   const ConnectivityWrapper({super.key});
 
@@ -91,4 +130,3 @@ class ConnectivityWrapper extends StatelessWidget {
     }
   }
 }
-

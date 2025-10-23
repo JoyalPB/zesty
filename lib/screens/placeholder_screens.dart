@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math'; // <-- 1. IMPORT DART:MATH FOR THE RANDOM GENERATOR
+
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 
@@ -22,12 +24,22 @@ class OrderConfirmationScreen extends StatefulWidget {
 class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   bool _isLoading = true;
   String? _errorMessage;
-  String? _orderId; // <-- 1. ADD A VARIABLE TO HOLD THE ORDER ID
+  String? _orderId;
 
   @override
   void initState() {
     super.initState();
     _placeOrder();
+  }
+
+  // <-- 2. ADD A HELPER FUNCTION TO GENERATE THE ID
+  String _generateRandomId(int length) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random();
+    return String.fromCharCodes(Iterable.generate(
+      length,
+          (_) => chars.codeUnitAt(random.nextInt(chars.length)),
+    ));
   }
 
   Future<void> _placeOrder() async {
@@ -38,20 +50,38 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       }
 
       final userData = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final username = userData.data()?['username'] ?? 'Guest';
+      // <-- 3. FETCH 'fullname' INSTEAD OF 'username'
+      final fullName = userData.data()?['fullName'] ?? 'Guest';
 
       final orderData = {
         'userId': user.uid,
-        'username': username,
+        'fullName': fullName, // <-- USE 'fullname' HERE
         'totalAmount': widget.totalAmount,
         'status': 'Pending',
         'timestamp': FieldValue.serverTimestamp(),
-        'items': widget.orderedItems.map((item) => item.toJson()).toList(), // Assuming a toJson method
+        'items': widget.orderedItems.map((item) => item.toJson()).toList(),
       };
 
-      // 2. SAVE THE DOCUMENT REFERENCE AND GET ITS ID
-      final newOrderDoc = await FirebaseFirestore.instance.collection('orders').add(orderData);
-      _orderId = newOrderDoc.id;
+      // <-- 4. LOGIC TO GENERATE A UNIQUE 4-DIGIT ID
+      String generatedId;
+      bool idExists;
+      DocumentReference orderDocRef;
+
+      do {
+        // Generate a random 4-character ID
+        generatedId = _generateRandomId(4);
+        orderDocRef = FirebaseFirestore.instance.collection('orders').doc(generatedId);
+
+        // Check if a document with this ID already exists
+        final docSnapshot = await orderDocRef.get();
+        idExists = docSnapshot.exists;
+
+      } while (idExists); // Loop until we find an ID that doesn't exist
+
+      // We found a unique ID, now create the document using .set()
+      await orderDocRef.set(orderData);
+
+      _orderId = generatedId; // Save the custom ID to be used by the StreamBuilder
 
       if (mounted) {
         Provider.of<CartProvider>(context, listen: false).clearCart();
@@ -91,7 +121,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           ? Center(
         child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 16)),
       )
-      // 3. BUILD THE BODY USING THE ORDER ID
           : _buildLiveOrderDetails(),
     );
   }
@@ -102,7 +131,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       return const Center(child: Text('Could not load order details.'));
     }
 
-    // 4. USE A STREAMBUILDER TO LISTEN TO THE SPECIFIC ORDER DOCUMENT
+    // This StreamBuilder now correctly listens to the custom 4-digit ID
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').doc(_orderId).snapshots(),
       builder: (context, snapshot) {
@@ -121,16 +150,16 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Your order has been placed!',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+              Text(
+                'Your order has been placed! (ID: $_orderId)', // Added the ID here
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
               ),
               const SizedBox(height: 20),
               ListTile(
                 leading: const Icon(Icons.receipt_long, color: Colors.teal),
                 title: const Text('Order Status', style: TextStyle(fontWeight: FontWeight.bold)),
                 trailing: Text(
-                  currentStatus, // <-- This now comes from the live data
+                  currentStatus,
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

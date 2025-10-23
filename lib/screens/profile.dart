@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:zesty_app/screens/signup_page.dart';
 import 'edit_profile.dart';
-import 'order_history_screen.dart';
+// import 'order_history_screen.dart'; // <-- 1. REMOVED THIS IMPORT
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -100,15 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // --- ADD THIS NEW NAVIGATION METHOD ---
-  /// Navigates to the Order History screen.
-  void _navigateToOrderHistory() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
-    );
-  }
-  // ------------------------------------
+  // --- 2. REMOVED THE _navigateToOrderHistory METHOD ---
 
   @override
   Widget build(BuildContext context) {
@@ -190,14 +182,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
 
-          // --- ADD THIS NEW LISTTILE FOR ORDER HISTORY ---
-          ListTile(
-            leading: const Icon(Icons.history, color: Colors.teal),
-            title: const Text('Order History'),
-            onTap: _navigateToOrderHistory,
-            trailing: const Icon(Icons.chevron_right),
-          ),
-          // ---------------------------------------------
+          // --- 3. REMOVED THE ORDER HISTORY LISTTILE ---
 
           const Spacer(),
 

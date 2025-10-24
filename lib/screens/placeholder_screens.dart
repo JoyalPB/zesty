@@ -2,19 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:math'; // <-- 1. IMPORT DART:MATH FOR THE RANDOM GENERATOR
+import 'dart:math';
 
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 
+// <-- 1. DEFINE AN ENUM FOR THE ORDER TYPE -->
+enum OrderPlacementType {
+  allInOne,
+  separateItems,
+}
+
 class OrderConfirmationScreen extends StatefulWidget {
   final List<CartItem> orderedItems;
   final double totalAmount;
+  final OrderPlacementType orderType; // <-- 2. ADD THE NEW PARAMETER -->
 
   const OrderConfirmationScreen({
     super.key,
     required this.orderedItems,
     required this.totalAmount,
+    required this.orderType, // <-- 3. ADD TO CONSTRUCTOR -->
   });
 
   @override
@@ -24,7 +32,7 @@ class OrderConfirmationScreen extends StatefulWidget {
 class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   bool _isLoading = true;
   String? _errorMessage;
-  String? _orderId;
+  String? _orderId; // Will only be set for 'allInOne' orders
 
   @override
   void initState() {
@@ -32,7 +40,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     _placeOrder();
   }
 
-  // <-- 2. ADD A HELPER FUNCTION TO GENERATE THE ID
   String _generateRandomId(int length) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random();
@@ -42,6 +49,21 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     ));
   }
 
+  // <-- 4. HELPER FUNCTION TO FIND A UNIQUE 4-DIGIT ID -->
+  Future<String> _findUniqueOrderId() async {
+    String generatedId;
+    bool idExists;
+    DocumentReference orderDocRef;
+    do {
+      generatedId = _generateRandomId(4);
+      orderDocRef = FirebaseFirestore.instance.collection('orders').doc(generatedId);
+      final docSnapshot = await orderDocRef.get();
+      idExists = docSnapshot.exists;
+    } while (idExists); // Loop until we find one that doesn't exist
+    return generatedId;
+  }
+
+  // <-- 5. HEAVILY MODIFIED _placeOrder METHOD -->
   Future<void> _placeOrder() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -50,51 +72,70 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       }
 
       final userData = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      // <-- 3. FETCH 'fullname' INSTEAD OF 'username'
+      // Make sure 'fullName' matches the field name in your Firestore 'users' collection
       final fullName = userData.data()?['fullName'] ?? 'Guest';
 
-      final orderData = {
-        'userId': user.uid,
-        'fullName': fullName, // <-- USE 'fullname' HERE
-        'totalAmount': widget.totalAmount,
-        'status': 'Pending',
-        'timestamp': FieldValue.serverTimestamp(),
-        'items': widget.orderedItems.map((item) => item.toJson()).toList(),
-      };
+      // --- LOGIC FOR 'ALL IN ONE' ORDER ---
+      if (widget.orderType == OrderPlacementType.allInOne) {
+        final orderData = {
+          'userId': user.uid,
+          'fullName': fullName,
+          'totalAmount': widget.totalAmount, // The total for ALL items
+          'status': 'Pending',
+          'timestamp': FieldValue.serverTimestamp(),
+          'items': widget.orderedItems.map((item) => item.toJson()).toList(), // List of ALL items
+        };
 
-      // <-- 4. LOGIC TO GENERATE A UNIQUE 4-DIGIT ID
-      String generatedId;
-      bool idExists;
-      DocumentReference orderDocRef;
+        // Find a unique ID for this single order
+        final generatedId = await _findUniqueOrderId();
+        await FirebaseFirestore.instance.collection('orders').doc(generatedId).set(orderData);
 
-      do {
-        // Generate a random 4-character ID
-        generatedId = _generateRandomId(4);
-        orderDocRef = FirebaseFirestore.instance.collection('orders').doc(generatedId);
+        // Save the single ID to show in the UI
+        _orderId = generatedId;
 
-        // Check if a document with this ID already exists
-        final docSnapshot = await orderDocRef.get();
-        idExists = docSnapshot.exists;
+        // --- LOGIC FOR 'SEPARATE' ORDERS ---
+      } else if (widget.orderType == OrderPlacementType.separateItems) {
 
-      } while (idExists); // Loop until we find an ID that doesn't exist
+        // Use a batch write to send all orders at once. It's faster
+        // and fails together, so you don't get partial orders.
+        final batch = FirebaseFirestore.instance.batch();
 
-      // We found a unique ID, now create the document using .set()
-      await orderDocRef.set(orderData);
+        for (final item in widget.orderedItems) {
+          final orderData = {
+            'userId': user.uid,
+            'fullName': fullName,
+            'totalAmount': item.price * item.quantity, // Total for THIS item only
+            'status': 'Pending',
+            'timestamp': FieldValue.serverTimestamp(),
+            'items': [item.toJson()], // A list containing ONLY this one item
+          };
 
-      _orderId = generatedId; // Save the custom ID to be used by the StreamBuilder
+          // Find a unique ID for EACH order
+          final generatedId = await _findUniqueOrderId();
+          final orderDocRef = FirebaseFirestore.instance.collection('orders').doc(generatedId);
 
+          // Add this new order to the batch
+          batch.set(orderDocRef, orderData);
+        }
+
+        // Commit all the new orders to Firestore
+        await batch.commit();
+        // _orderId remains null, because there are multiple orders
+      }
+
+      // Clear the cart (this runs for both cases)
       if (mounted) {
-        Provider.of<CartProvider>(context, listen: false).clearCart();
+        // This line ONLY removes the items you selected for checkout
+        Provider.of<CartProvider>(context, listen: false).removeSelectedItems();
       }
 
       setState(() {
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to place order. Please try again.';
+        _errorMessage = 'Failed to place order(s). Please try again. \nError: $e';
       });
     }
   }
@@ -113,25 +154,75 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 20),
-            Text('Placing your order...', style: TextStyle(fontSize: 16)),
+            Text('Placing your order(s)...', style: TextStyle(fontSize: 16)),
           ],
         ),
       )
           : _errorMessage != null
           ? Center(
-        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            _errorMessage!,
+            style: const TextStyle(color: Colors.red, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
       )
-          : _buildLiveOrderDetails(),
+      // <-- 6. RENAMED AND UPDATED THE BODY BUILDER -->
+          : _buildConfirmationBody(),
     );
   }
 
-  /// Builds the UI that listens for live updates to the order.
-  Widget _buildLiveOrderDetails() {
+  /// Builds the UI based on the order type.
+  Widget _buildConfirmationBody() {
+    // --- 7. UI FOR 'SEPARATE' ORDERS ---
+    if (widget.orderType == OrderPlacementType.separateItems) {
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.green, size: 80),
+              const SizedBox(height: 20),
+              const Text(
+                'Your orders have been placed!',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${widget.orderedItems.length} separate orders were successfully created.',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: const Text('Back to Home'),
+                  onPressed: () {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // --- 8. UI FOR 'ALL IN ONE' ORDER (Your existing logic) ---
     if (_orderId == null) {
+      // This case should ideally not be hit if 'allInOne' was successful,
+      // but it's good practice to keep it.
       return const Center(child: Text('Could not load order details.'));
     }
 
-    // This StreamBuilder now correctly listens to the custom 4-digit ID
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').doc(_orderId).snapshots(),
       builder: (context, snapshot) {
@@ -151,7 +242,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Your order has been placed! (ID: $_orderId)', // Added the ID here
+                'Your order has been placed! (ID: $_orderId)',
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
               ),
               const SizedBox(height: 20),
@@ -163,8 +254,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: currentStatus == 'Pending' ? Colors.orange : (currentStatus == 'Cooking' ? Colors.blue : Colors.green)
-                  ),
+                      color: currentStatus == 'Pending' ? Colors.orange : (currentStatus == 'Cooking' ? Colors.blue : Colors.green)),
                 ),
               ),
               const Divider(),

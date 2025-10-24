@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:zesty_app/screens/placeholder_screens.dart';
 
-// Import your new order confirmation screen
 import '../screens/payment_screen.dart';
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 
-// Firestore and OrdersProvider are no longer needed here
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import '../providers/order_provider.dart';
+// Import the OrderConfirmationScreen and the enum
+import '../screens/placeholder_screens.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
@@ -41,33 +39,32 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  // --- THIS FUNCTION IS NOW MUCH SIMPLER ---
-  // It no longer saves to the database or clears the cart.
-  // Its only job is to navigate to the confirmation screen.
-  void _handleSuccessfulOrder(BuildContext context) {
+  // UPDATE THIS FUNCTION to use selected items
+  void _handleSuccessfulOrder(BuildContext context, OrderPlacementType orderType) {
     final cart = Provider.of<CartProvider>(context, listen: false);
-    final List<CartItem> orderedItems = cart.items.values.toList();
-    final double total = cart.totalAmount;
 
-    // The new logic: Simply navigate and pass the cart data.
-    // The OrderConfirmationScreen will handle the rest.
+    // --- THIS IS THE KEY CHANGE ---
+    // We now pass the SELECTED items and total, not the whole cart
+    final List<CartItem> orderedItems = cart.selectedCartItems;
+    final double total = cart.selectedTotalAmount;
+    // --- END OF CHANGE ---
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => OrderConfirmationScreen(
-          orderedItems: orderedItems,
-          totalAmount: total,
+          orderedItems: orderedItems, // Pass selected items
+          totalAmount: total,        // Pass selected total
+          orderType: orderType,
         ),
       ),
     );
   }
-  // --- END OF SIMPLIFIED FUNCTION ---
 
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
     return Scaffold(
       appBar: AppBar(
-        // ... AppBar code remains the same
         title: const Text('Your Cart'),
         actions: [
           IconButton(
@@ -88,11 +85,16 @@ class CartScreen extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Total', style: TextStyle(fontSize: 20)),
+                  // --- UPDATE The "Total" text ---
+                  Text(
+                    'Selected (${cart.selectedItemCount})', // Show selected count
+                    style: const TextStyle(fontSize: 20),
+                  ),
                   const Spacer(),
                   Chip(
                     label: Text(
-                      '₹${cart.totalAmount.toStringAsFixed(2)}',
+                      // --- UPDATE Chip to show selected total ---
+                      '₹${cart.selectedTotalAmount.toStringAsFixed(2)}',
                       style: TextStyle(
                         color:
                         Theme.of(context).primaryTextTheme.titleLarge?.color,
@@ -101,19 +103,19 @@ class CartScreen extends StatelessWidget {
                     backgroundColor: Theme.of(context).primaryColor,
                   ),
                   TextButton(
-                    onPressed: (cart.totalAmount <= 0)
+                    // --- UPDATE onPressed logic ---
+                    onPressed: (cart.selectedTotalAmount <= 0) // Disable if no items are selected
                         ? null
                         : () {
-                      // This part remains the same. It correctly navigates
-                      // to the payment screen, which then calls our new,
-                      // simplified _handleSuccessfulOrder function.
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (ctx) => PaymentScreen(
-                            totalAmount: cart.totalAmount,
+                            // Pass the selected total to the payment screen
+                            totalAmount: cart.selectedTotalAmount,
                             onSuccessfulPayment: () =>
-                                _handleSuccessfulOrder(context),
+                            // It's an order of *all selected items*
+                            _handleSuccessfulOrder(context, OrderPlacementType.allInOne),
                           ),
                         ),
                       );
@@ -127,11 +129,14 @@ class CartScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: ListView.builder(
-              // ... The rest of the ListView.builder remains the same
               itemCount: cart.items.length,
               itemBuilder: (ctx, i) {
                 final item = cart.items.values.toList()[i];
                 final productId = cart.items.keys.toList()[i];
+
+                // Get the selection state for this item
+                final bool isSelected = cart.selectedItems[productId] ?? false;
+
                 return Dismissible(
                   key: ValueKey(item.id),
                   background: Container(
@@ -153,17 +158,14 @@ class CartScreen extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          child: Padding(
-                            padding: const EdgeInsets.all(5),
-                            child: FittedBox(child: Text('₹${item.price}')),
-                          ),
-                        ),
-                        title: Text(item.name),
-                        subtitle: Text(
-                            'Total: ₹${(item.price * item.quantity).toStringAsFixed(2)}'),
-                        trailing: Row(
+                      // --- CONVERT ListTile to CheckboxListTile ---
+                      child: CheckboxListTile(
+                        value: isSelected,
+                        onChanged: (bool? value) {
+                          cart.toggleItemSelection(productId);
+                        },
+                        controlAffinity: ListTileControlAffinity.leading, // Checkbox at the start
+                        secondary: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
@@ -183,6 +185,9 @@ class CartScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                        title: Text(item.name),
+                        subtitle: Text(
+                            'Total: ₹${(item.price * item.quantity).toStringAsFixed(2)}'),
                       ),
                     ),
                   ),

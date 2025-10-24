@@ -1,4 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import this for the Timestamp type
+// In: ../models/menu_item.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MenuItem {
   final String id;
@@ -11,7 +12,11 @@ class MenuItem {
   final int stock;
   final String status;
   final String dietary;
-  final Timestamp createdAt; // <-- ADD THIS NEW PROPERTY
+  final Timestamp createdAt;
+
+  // --- ADD THESE TWO LINES ---
+  final double averageRating;
+  final int reviewCount;
 
   MenuItem({
     required this.id,
@@ -24,6 +29,11 @@ class MenuItem {
     required this.stock,
     required this.status,
     required this.dietary,
-    required this.createdAt, // <-- ADD THIS TO THE CONSTRUCTOR
+    required this.createdAt,
+
+    // --- ADD THESE TO THE CONSTRUCTOR ---
+    // We give them default values in case they don't exist in Firestore yet
+    this.averageRating = 0.0,
+    this.reviewCount = 0,
   });
 }

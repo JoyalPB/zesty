@@ -6,15 +6,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
 
-  // --- 1. ADDED METHOD TO SHOW THE REVIEW DIALOG ---
-  void _showReviewDialog(BuildContext context, String orderId) {
-    double _rating = 0; // This will hold the star rating
+  // --- 1. _showReviewDialog method is UNCHANGED ---
+  void _showReviewDialog(
+      BuildContext context,
+      String orderId,
+      String userId, // Pass in userId
+      List<dynamic> orderItems, // Pass in orderItems
+      ) {
+    double _rating = 0;
     final _reviewController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (ctx) {
-        // Use StatefulBuilder to manage the state of the stars inside the dialog
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
@@ -23,9 +27,9 @@ class OrdersScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ... (Star rating and TextField are unchanged) ...
                     const Text('How was your experience?', style: TextStyle(fontSize: 16)),
                     const SizedBox(height: 10),
-                    // Star Rating Row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(5, (index) {
@@ -36,7 +40,6 @@ class OrdersScreen extends StatelessWidget {
                             size: 30,
                           ),
                           onPressed: () {
-                            // Update the rating state within the dialog
                             setDialogState(() {
                               _rating = index + 1.0;
                             });
@@ -68,25 +71,25 @@ class OrdersScreen extends StatelessWidget {
                   child: const Text('Submit'),
                   onPressed: () async {
                     if (_rating == 0) {
-                      // Show an error if no rating is selected
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Please select a star rating.'),
                           backgroundColor: Colors.red,
                         ),
                       );
-                      return; // Don't close the dialog
+                      return;
                     }
 
-                    // Close the dialog first
                     Navigator.of(dialogContext).pop();
 
                     try {
-                      // Call the submit function
+                      // --- UPDATED SUBMIT CALL (unchanged) ---
                       await _submitReview(
                         orderId: orderId,
                         rating: _rating,
                         reviewText: _reviewController.text,
+                        userId: userId,
+                        orderItems: orderItems,
                       );
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -112,20 +115,45 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  // --- 2. ADDED METHOD TO SUBMIT THE REVIEW TO FIRESTORE ---
+  // --- 2. _submitReview METHOD IS NOW MODIFIED ---
   Future<void> _submitReview({
     required String orderId,
     required double rating,
     required String reviewText,
+    required String userId,
+    required List<dynamic> orderItems,
   }) async {
-    // Update the existing order document with a new 'review' map
-    await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
-      'review': {
-        'rating': rating,
-        'text': reviewText,
-        'timestamp': FieldValue.serverTimestamp(),
-      }
+
+    // --- (A) FETCH THE USER'S DOCUMENT TO GET THEIR NAME ---
+    final userData = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    // Make sure 'fullName' matches the field name in your 'users' collection
+    final fullName = userData.data()?['fullName'] ?? 'Anonymous User';
+    // --- END OF CHANGE (A) ---
+
+    // Get a batch write instance for an atomic operation
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 1. Create a new document in the 'reviews' collection
+    final newReviewRef = FirebaseFirestore.instance.collection('reviews').doc();
+
+    // --- (B) ADD 'fullName' TO THE REVIEW DATA ---
+    batch.set(newReviewRef, {
+      'orderId': orderId,
+      'userId': userId,
+      'fullName': fullName, // <-- HERE IS THE NEW FIELD
+      'rating': rating,
+      'text': reviewText,
+      'items': orderItems, // Store a copy of the items that were reviewed
+      'timestamp': FieldValue.serverTimestamp(),
     });
+    // --- END OF CHANGE (B) ---
+
+    // 2. Update the 'orders' document with a flag
+    final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+    batch.update(orderRef, {'hasReview': true});
+
+    // Commit both operations at once
+    await batch.commit();
   }
 
   @override
@@ -133,6 +161,7 @@ class OrdersScreen extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
+      // ... (unchanged login check) ...
       return Scaffold(
         appBar: AppBar(
           title: const Text('Your Orders'),
@@ -154,6 +183,7 @@ class OrdersScreen extends StatelessWidget {
             .orderBy('timestamp', descending: true)
             .snapshots(),
         builder: (ctx, orderSnapshot) {
+          // ... (unchanged loading/error/empty states) ...
           if (orderSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -174,10 +204,10 @@ class OrdersScreen extends StatelessWidget {
               final timestamp = orderData['timestamp'] as Timestamp?;
               final status = orderData['status'] ?? 'Unknown';
 
-              // --- 3. CHECK IF A REVIEW ALREADY EXISTS ---
-              final bool hasReview = orderData.containsKey('review');
+              // --- 3. CHECK FOR THE 'hasReview' FLAG (unchanged) ---
+              final bool hasReview = orderData['hasReview'] ?? false;
 
-              // --- 4. BUILD THE LIST OF CHILDREN FOR THE TILE ---
+              // --- 4. BUILD THE LIST OF CHILDREN FOR THE TILE (unchanged) ---
               List<Widget> childrenWidgets = orderItems.map<Widget>((item) {
                 final product = item as Map<String, dynamic>;
                 return ListTile(
@@ -189,7 +219,7 @@ class OrdersScreen extends StatelessWidget {
                 );
               }).toList();
 
-              // --- 5. CONDITIONALLY ADD THE REVIEW BUTTON OR THE REVIEW ITSELF ---
+              // --- 5. CONDITIONALLY ADD THE REVIEW BUTTON OR THE REVIEW ITSELF (unchanged) ---
               if (status.toLowerCase() == 'delivered' && !hasReview) {
                 // If delivered and not reviewed, add the button
                 childrenWidgets.add(
@@ -204,46 +234,70 @@ class OrdersScreen extends StatelessWidget {
                       icon: const Icon(Icons.star_outline),
                       label: const Text('Provide Review'),
                       onPressed: () {
-                        _showReviewDialog(context, orderId);
+                        // --- PASS THE REQUIRED DATA TO THE DIALOG (unchanged) ---
+                        _showReviewDialog(context, orderId, user.uid, orderItems);
                       },
                     ),
                   ),
                 );
               } else if (hasReview) {
-                // If already reviewed, display the review
-                final reviewData = orderData['review'] as Map<String, dynamic>;
-                final double rating = (reviewData['rating'] ?? 0.0).toDouble();
-                final String reviewText = reviewData['text'] ?? '';
-
+                // --- 6. IF REVIEWED, FETCH AND DISPLAY THE REVIEW (unchanged) ---
                 childrenWidgets.add(
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your Review',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('reviews')
+                        .where('orderId', isEqualTo: orderId)
+                        .limit(1) // We only expect one review per order
+                        .snapshots(),
+                    builder: (ctx, reviewSnapshot) {
+                      if (reviewSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(),
+                        ));
+                      }
+                      if (!reviewSnapshot.hasData || reviewSnapshot.data!.docs.isEmpty) {
+                        return const ListTile(
+                          leading: Icon(Icons.error_outline, color: Colors.red),
+                          title: Text('Could not load review'),
+                        );
+                      }
+
+                      // We found the review
+                      final reviewData = reviewSnapshot.data!.docs.first.data() as Map<String, dynamic>;
+                      final double rating = (reviewData['rating'] ?? 0.0).toDouble();
+                      final String reviewText = reviewData['text'] ?? '';
+
+                      return Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Your Review',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: List.generate(5, (index) {
+                                return Icon(
+                                  index < rating ? Icons.star : Icons.star_border,
+                                  color: Colors.amber,
+                                  size: 20,
+                                );
+                              }),
+                            ),
+                            if (reviewText.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                reviewText,
+                                style: const TextStyle(fontStyle: FontStyle.italic),
+                              ),
+                            ]
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: List.generate(5, (index) {
-                            return Icon(
-                              index < rating ? Icons.star : Icons.star_border,
-                              color: Colors.amber,
-                              size: 20,
-                            );
-                          }),
-                        ),
-                        if (reviewText.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            reviewText,
-                            style: const TextStyle(fontStyle: FontStyle.italic),
-                          ),
-                        ]
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 );
               }
@@ -251,6 +305,7 @@ class OrdersScreen extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.all(10),
                 child: ExpansionTile(
+                  // ... (RichText title is unchanged) ...
                   title: RichText(
                     text: TextSpan(
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -283,7 +338,7 @@ class OrdersScreen extends StatelessWidget {
                     ),
                     backgroundColor: _getStatusColor(status),
                   ),
-                  // --- 6. USE THE DYNAMIC LIST OF CHILDREN ---
+                  // --- 7. USE THE DYNAMIC LIST OF CHILDREN (unchanged) ---
                   children: childrenWidgets,
                 ),
               );
@@ -294,6 +349,7 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
+  // ... (_getStatusColor method is unchanged) ...
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending':

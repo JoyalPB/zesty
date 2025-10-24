@@ -32,7 +32,6 @@ class _HomeContentState extends State<HomeContent> {
     });
   }
 
-  // --- THIS FUNCTION HAS BEEN UPDATED ---
   Future<String> _fetchUsername() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -41,14 +40,12 @@ class _HomeContentState extends State<HomeContent> {
             .collection('users')
             .doc(user.uid)
             .get();
-        // The change is on this line:
         return userDoc.data()?['username'] ?? 'Guest';
       }
-      return 'Guest'; // Return default name if no user is logged in
+      return 'Guest';
     } catch (e) {
-      // Handle potential errors, like network issues
       print("Error fetching username: $e");
-      return 'Friend'; // Return a friendly fallback name
+      return 'Friend';
     }
   }
 
@@ -70,11 +67,130 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
+  // --- NEW ---
+  // Helper method to build and show the item details popup
+  Future<void> _showItemDetailsPopup(MenuItem item) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          contentPadding: EdgeInsets.zero,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(28.0),
+                    topRight: Radius.circular(28.0),
+                  ),
+                  child: Hero(
+                    tag: 'item_image_${item.id}', // Ensure this tag matches MenuItemCard
+                    child: Image.network(
+                      item.imageUrl,
+                      height: 200,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox(
+                        height: 200,
+                        child: Icon(Icons.broken_image,
+                            size: 50, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // --- THIS IS THE NEW REVIEW WIDGET ---
+                      Row(
+                        children: [
+                          Icon(Icons.star, color: Colors.amber, size: 20),
+                          const SizedBox(width: 4),
+                          Text(
+                            item.averageRating.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '(${item.reviewCount} reviews)',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // --- END OF NEW REVIEW WIDGET ---
+                      const SizedBox(height: 16),
+                      Text(
+                        item.description,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '\$${item.price.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.teal,
+                            ),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              // TODO: Add to cart logic
+                              Navigator.of(context).pop(); // Close dialog
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            child: const Text('Add to Cart'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28.0),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
+        // ... (Your existing FutureBuilder for username)
         FutureBuilder<String>(
           future: _usernameFuture,
           builder: (context, snapshot) {
@@ -95,6 +211,7 @@ class _HomeContentState extends State<HomeContent> {
         const Text('What would you like to eat?',
             style: TextStyle(fontSize: 18, color: Colors.grey)),
         const SizedBox(height: 24),
+        // ... (Your existing TextField)
         TextField(
             controller: _searchController,
             decoration: InputDecoration(
@@ -119,26 +236,32 @@ class _HomeContentState extends State<HomeContent> {
               return ErrorScreen(onRetry: () => setState(() {}));
             }
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return const Center(
-                  child: Text('No menu items available.'));
+              return const Center(child: Text('No menu items available.'));
             }
 
             final allItems = snapshot.data!.docs;
             final allMenuItems = allItems.map((doc) {
               final itemData = doc.data() as Map<String, dynamic>;
               return MenuItem(
-                  id: doc.id,
-                  name: itemData['name'] ?? 'No Name',
-                  price: (itemData['price'] ?? 0.0).toDouble(),
-                  imageUrl: itemData['image'] ?? '',
-                  category: itemData['category'] ?? 'General',
-                  description: itemData['description'] ?? '',
-                  isAvailable: itemData['available'] ?? false,
-                  stock: itemData['stock'] ?? 0,
-                  status: itemData['status'] ?? '',
-                  dietary: itemData['dietary'] ?? '',
-                  createdAt: itemData['createdAt'] ?? Timestamp.now());
+                id: doc.id,
+                name: itemData['name'] ?? 'No Name',
+                price: (itemData['price'] ?? 0.0).toDouble(),
+                imageUrl: itemData['image'] ?? '',
+                category: itemData['category'] ?? 'General',
+                description: itemData['description'] ?? '',
+                isAvailable: itemData['available'] ?? false,
+                stock: itemData['stock'] ?? 0,
+                status: itemData['status'] ?? '',
+                dietary: itemData['dietary'] ?? '',
+                createdAt: itemData['createdAt'] ?? Timestamp.now(),
+                // --- MODIFIED ---
+                // Read the new review data from Firestore
+                averageRating: (itemData['averageRating'] ?? 0.0).toDouble(),
+                reviewCount: itemData['reviewCount'] ?? 0,
+              );
             }).toList();
+
+            // ... (Your existing logic for featuredItems, categories, filtering, and sorting)
             final availableForBanner =
             allMenuItems.where((item) => item.isAvailable).toList();
             final shuffledItems = availableForBanner..shuffle();
@@ -198,6 +321,13 @@ class _HomeContentState extends State<HomeContent> {
                     .compareTo((dataA)['price'] as num);
               }
 
+              // --- MODIFIED ---
+              // Add sorting by rating (optional but good)
+              if (_appliedFilters.sortBy == 'Rating: High-Low') {
+                return ((dataB)['averageRating'] as num? ?? 0)
+                    .compareTo((dataA)['averageRating'] as num? ?? 0);
+              }
+
               final stockA = dataA['stock'] ?? 0;
               final stockB = dataB['stock'] ?? 0;
               if (stockA > 0 && stockB == 0) return -1;
@@ -213,9 +343,11 @@ class _HomeContentState extends State<HomeContent> {
               return (dataA['name'] ?? '').compareTo(dataB['name'] ?? '');
             });
 
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ... (Your existing filter/category row)
                 Row(children: [
                   IconButton(
                       icon: const Icon(Icons.filter_list_alt),
@@ -261,6 +393,7 @@ class _HomeContentState extends State<HomeContent> {
                   FeaturedItemsBanner(featuredItems: featuredItems),
                   const SizedBox(height: 24)
                 ],
+                // ... (Your existing 'No items found' logic)
                 if (filteredItems.isEmpty)
                   Center(
                       child: Padding(
@@ -309,19 +442,32 @@ class _HomeContentState extends State<HomeContent> {
                       final itemDoc = filteredItems[index];
                       final itemData = itemDoc.data() as Map<String, dynamic>;
                       final menuItem = MenuItem(
-                          id: itemDoc.id,
-                          name: itemData['name'] ?? 'No Name',
-                          price: (itemData['price'] ?? 0.0).toDouble(),
-                          imageUrl: itemData['image'] ?? '',
-                          category: itemData['category'] ?? 'General',
-                          description: itemData['description'] ?? '',
-                          isAvailable: itemData['available'] ?? false,
-                          stock: itemData['stock'] ?? 0,
-                          status: itemData['status'] ?? '',
-                          dietary: itemData['dietary'] ?? '',
-                          createdAt:
-                          itemData['createdAt'] ?? Timestamp.now());
-                      return MenuItemCard(item: menuItem);
+                        id: itemDoc.id,
+                        name: itemData['name'] ?? 'No Name',
+                        price: (itemData['price'] ?? 0.0).toDouble(),
+                        imageUrl: itemData['image'] ?? '',
+                        category: itemData['category'] ?? 'General',
+                        description: itemData['description'] ?? '',
+                        isAvailable: itemData['available'] ?? false,
+                        stock: itemData['stock'] ?? 0,
+                        status: itemData['status'] ?? '',
+                        dietary: itemData['dietary'] ?? '',
+                        createdAt: itemData['createdAt'] ?? Timestamp.now(),
+                        // --- MODIFIED ---
+                        // Pass the review data to the MenuItem object
+                        averageRating: (itemData['averageRating'] ?? 0.0).toDouble(),
+                        reviewCount: itemData['reviewCount'] ?? 0,
+                      );
+
+                      // --- MODIFIED ---
+                      // Wrap the card in an InkWell to make it tappable
+                      return InkWell(
+                        onTap: () {
+                          // Show the popup when tapped
+                          _showItemDetailsPopup(menuItem);
+                        },
+                        child: MenuItemCard(item: menuItem),
+                      );
                     },
                   ),
               ],

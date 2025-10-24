@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
 
-  // --- 1. UPDATED METHOD TO SHOW THE REVIEW DIALOG ---
+  // --- 1. _showReviewDialog method is UNCHANGED ---
   void _showReviewDialog(
       BuildContext context,
       String orderId,
@@ -83,7 +83,7 @@ class OrdersScreen extends StatelessWidget {
                     Navigator.of(dialogContext).pop();
 
                     try {
-                      // --- UPDATED SUBMIT CALL ---
+                      // --- UPDATED SUBMIT CALL (unchanged) ---
                       await _submitReview(
                         orderId: orderId,
                         rating: _rating,
@@ -115,7 +115,7 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  // --- 2. COMPLETELY REVISED SUBMIT METHOD ---
+  // --- 2. _submitReview METHOD IS NOW MODIFIED ---
   Future<void> _submitReview({
     required String orderId,
     required double rating,
@@ -123,19 +123,30 @@ class OrdersScreen extends StatelessWidget {
     required String userId,
     required List<dynamic> orderItems,
   }) async {
+
+    // --- (A) FETCH THE USER'S DOCUMENT TO GET THEIR NAME ---
+    final userData = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    // Make sure 'fullName' matches the field name in your 'users' collection
+    final fullName = userData.data()?['fullName'] ?? 'Anonymous User';
+    // --- END OF CHANGE (A) ---
+
     // Get a batch write instance for an atomic operation
     final batch = FirebaseFirestore.instance.batch();
 
     // 1. Create a new document in the 'reviews' collection
     final newReviewRef = FirebaseFirestore.instance.collection('reviews').doc();
+
+    // --- (B) ADD 'fullName' TO THE REVIEW DATA ---
     batch.set(newReviewRef, {
       'orderId': orderId,
       'userId': userId,
+      'fullName': fullName, // <-- HERE IS THE NEW FIELD
       'rating': rating,
       'text': reviewText,
       'items': orderItems, // Store a copy of the items that were reviewed
       'timestamp': FieldValue.serverTimestamp(),
     });
+    // --- END OF CHANGE (B) ---
 
     // 2. Update the 'orders' document with a flag
     final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
@@ -193,7 +204,7 @@ class OrdersScreen extends StatelessWidget {
               final timestamp = orderData['timestamp'] as Timestamp?;
               final status = orderData['status'] ?? 'Unknown';
 
-              // --- 3. CHECK FOR THE 'hasReview' FLAG ---
+              // --- 3. CHECK FOR THE 'hasReview' FLAG (unchanged) ---
               final bool hasReview = orderData['hasReview'] ?? false;
 
               // --- 4. BUILD THE LIST OF CHILDREN FOR THE TILE (unchanged) ---
@@ -208,7 +219,7 @@ class OrdersScreen extends StatelessWidget {
                 );
               }).toList();
 
-              // --- 5. CONDITIONALLY ADD THE REVIEW BUTTON OR THE REVIEW ITSELF ---
+              // --- 5. CONDITIONALLY ADD THE REVIEW BUTTON OR THE REVIEW ITSELF (unchanged) ---
               if (status.toLowerCase() == 'delivered' && !hasReview) {
                 // If delivered and not reviewed, add the button
                 childrenWidgets.add(
@@ -223,14 +234,14 @@ class OrdersScreen extends StatelessWidget {
                       icon: const Icon(Icons.star_outline),
                       label: const Text('Provide Review'),
                       onPressed: () {
-                        // --- PASS THE REQUIRED DATA TO THE DIALOG ---
+                        // --- PASS THE REQUIRED DATA TO THE DIALOG (unchanged) ---
                         _showReviewDialog(context, orderId, user.uid, orderItems);
                       },
                     ),
                   ),
                 );
               } else if (hasReview) {
-                // --- 6. IF REVIEWED, FETCH AND DISPLAY THE REVIEW ---
+                // --- 6. IF REVIEWED, FETCH AND DISPLAY THE REVIEW (unchanged) ---
                 childrenWidgets.add(
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
@@ -327,7 +338,7 @@ class OrdersScreen extends StatelessWidget {
                     ),
                     backgroundColor: _getStatusColor(status),
                   ),
-                  // --- 7. USE THE DYNAMIC LIST OF CHILDREN ---
+                  // --- 7. USE THE DYNAMIC LIST OF CHILDREN (unchanged) ---
                   children: childrenWidgets,
                 ),
               );
